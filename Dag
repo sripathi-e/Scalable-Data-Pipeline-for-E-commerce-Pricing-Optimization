@@ -1,0 +1,37 @@
+from airflow import DAG
+from airflow.operators.bash import BashOperator
+from datetime import datetime, timedelta
+
+default_args = {
+    'owner': 'airflow',
+    'depends_on_past': False,
+    'email_on_failure': False,
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5),
+    'start_date': datetime(2025, 10, 1)
+}
+
+with DAG('ecommerce_pricing_pipeline',
+         default_args=default_args,
+         schedule_interval='@daily',
+         catchup=False) as dag:
+
+    # Step 1: Create Hive tables
+    create_hive_tables = BashOperator(
+        task_id='create_hive_tables',
+        bash_command='hive -f /home/hadoop/ecommerce_pricing_pipeline/hive/create_tables.hql'
+    )
+
+    # Step 2: Run Spark job
+    run_spark_job = BashOperator(
+        task_id='run_spark_job',
+        bash_command='spark-submit /home/hadoop/ecommerce_pricing_pipeline/spark_jobs/pricing_analysis.py'
+    )
+
+    # Step 3: Validate Hive results
+    validate_results = BashOperator(
+        task_id='validate_results',
+        bash_command='hive -e "SELECT * FROM ecommerce.category_pricing_summary LIMIT 5;"'
+    )
+
+    create_hive_tables >> run_spark_job >> validate_results
