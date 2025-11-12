@@ -1,0 +1,63 @@
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, round, avg, sum, countDistinct, max, min
+from pyspark.sql.types import DoubleType
+
+# =======================================
+# Initialize Spark session
+# =======================================
+spark = SparkSession.builder \
+    .appName("EcommercePricingOptimization") \
+    .enableHiveSupport() \
+    .getOrCreate()
+
+# =======================================
+# STEP 1: Load raw data
+# =======================================
+products_df = spark.read.csv("hdfs:///data/ecommerce/products.csv", header=True, inferSchema=True)
+sales_df = spark.read.csv("hdfs:///data/ecommerce/sales.csv", header=True, inferSchema=True)
+
+# =======================================
+# STEP 2: Data Cleaning
+# =======================================
+products_df = products_df.fillna({"discount": 0.0})
+sales_df = sales_df.na.drop(subset=["product_id", "units_sold"])
+
+products_df = products_df.withColumn("base_price", col("base_price").cast(DoubleType()))
+products_df = products_df.withColumn("discount", col("discount").cast(DoubleType()))
+
+products_df = products_df.filter(col("base_price") > 0)
+sales_df = sales_df.filter(col("units_sold") > 0)
+
+# =======================================
+# STEP 3: Data Transformation
+# =======================================
+joined_df = sales_df.join(products_df, "product_id", "inner")
+
+joined_df = joined_df.withColumn("effective_price", round(col("base_price") * (1 - col("discount")), 2))
+joined_df = joined_df.withColumn("revenue", round(col("effective_price") * col("units_sold"), 2))
+
+# =======================================
+# STEP 4: Category-level Aggregation
+# =======================================
+category_summary = joined_df.groupBy("category").agg(
+    countDistinct("product_id").alias("total_products"),
+    round(avg("effective_price"), 2).alias("avg_effective_price"),
+    round(sum("revenue"), 2).alias("total_revenue"),
+    round(max("revenue"), 2).alias("max_revenue"),
+    round(min("revenue"), 2).alias("min_revenue")
+)
+
+# =======================================
+# STEP 5: Region-level Aggregation
+# =======================================
+region_summary = joined_df.groupBy("region").agg(
+    sum("units_sold").alias("total_sales"),
+    round(sum("revenue"), 2).alias("total_revenue"),
+    round(avg("revenue"), 2).alias("avg_revenue_per_product")
+)
+
+# =======================================
+# STEP 6: Save to Hive
+# =======================================
+category_summary.write.mode("overwrite").saveAsTable("ecommerce.category_pricing_summary")
+region_summary.write.mode("overwrite").saveAsTable("ecommerce.region_revenue_summary")
