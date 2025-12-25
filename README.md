@@ -1,4 +1,4 @@
-# 🛒 Scalable-Data-Pipeline-for-E-commerce-Pricing-Optimization
+# 🛒 Data-Pipeline-for-E-commerce-Pricing-Optimization
 
 ![Python](https://img.shields.io/badge/Python-3.2+-blue.svg)
 ![Apache Spark](https://img.shields.io/badge/Apache%20Spark-3.x-orange)
